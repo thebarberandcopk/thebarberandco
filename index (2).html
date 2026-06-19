@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Barber & Co. - POS</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f6f8;
+            --sidebar-bg: #111827;
+            --sidebar-text: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #334155;
+            --border-color: #e2e8f0;
+            --primary: #d4af37;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --secondary: #64748b;
+        }
+
+        body.dark-mode {
+            --bg-color: #0f172a;
+            --sidebar-bg: #020617;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --border-color: #334155;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        body { background-color: var(--bg-color); color: var(--text-main); transition: background 0.3s; }
+
+        .app-container { display: flex; height: 100vh; overflow: hidden; }
+
+        .sidebar { width: 250px; background-color: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; }
+        .sidebar .brand { padding: 40px 20px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: bold; display: flex; flex-direction: column; align-items: center; justify-content: center;}
+        .sidebar nav { display: flex; flex-direction: column; padding: 10px 0; }
+        .sidebar nav button { background: none; border: none; color: var(--sidebar-text); padding: 15px 20px; text-align: left; cursor: pointer; transition: 0.2s; font-size: 16px; }
+        .sidebar nav button:hover, .sidebar nav button.active { background-color: rgba(212, 175, 55, 0.2); border-left: 4px solid var(--primary); }
+
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+
+        .topbar { background-color: var(--card-bg); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); }
+        #theme-toggle { padding: 8px 12px; cursor: pointer; background: var(--secondary); color: white; border: none; border-radius: 4px; }
+        .sync-status { font-size: 12px; margin-left: 15px; }
+        .sync-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+        .sync-online { background-color: #22c55e; }
+        .sync-offline { background-color: #ef4444; }
+
+        .view { display: none; padding: 20px; }
+        .active-view { display: block; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .stat-card { background: var(--card-bg); padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border-color); border-left: 4px solid var(--primary); }
+        .stat-card h3 { font-size: 14px; color: var(--secondary); margin-bottom: 5px; }
+        .stat-card p { font-size: 24px; font-weight: bold; }
+
+        .chart-container { background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); height: 350px; position: relative; margin-bottom: 20px; }
+
+        .card-form { background: var(--card-bg); padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 15px; }
+        .card-form input, .card-form select { padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color); color: var(--text-main); font-size: 14px; }
+        .card-form button { padding: 10px 15px; border: none; border-radius: 4px; background: #111827; color: white; cursor: pointer; font-size: 14px; font-weight: bold; border: 1px solid #111827; }
+        .card-form button:hover { background: var(--primary); color: #111827; border-color: var(--primary); }
+        .card-form label { font-size: 12px; font-weight: bold; color: var(--secondary); margin-bottom: -10px; }
+
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .grid-add-service { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; margin-bottom: 15px; align-items: center; }
+
+        .data-table-container { background: var(--card-bg); padding: 20px; border-radius: 8px; overflow-x: auto; border: 1px solid var(--border-color); margin-top: 15px; }
+        table { width: 100%; border-collapse: collapse; }
+        table th, table td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        table th { background-color: var(--bg-color); font-size: 14px; color: var(--secondary); }
+
+        .invoice-totals { width: 320px; margin-left: auto; margin-top: 20px; background: var(--bg-color); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); }
+        .total-row { display: flex; justify-content: space-between; margin-bottom: 10px; align-items: center; font-size: 14px; }
+        .total-row input, .total-row select { width: 90px; padding: 5px; }
+
+        .action-buttons { display: flex; gap: 10px; margin-top: 20px; margin-bottom: 10px; flex-wrap: wrap; }
+        .action-buttons button, .btn-action { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; color: white; }
+        .btn-primary { background: #111827; }
+        .btn-primary:hover { background: var(--primary); color: #111827;}
+        .btn-success { background: var(--success); }
+        .btn-danger { background: var(--danger); }
+        .btn-secondary { background: var(--secondary); }
+
+        .toast { position: fixed; bottom: 20px; right: 20px; background: var(--success); color: white; padding: 15px 20px; border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 1000; font-weight: bold; }
+        .toast-error { background: var(--danger); }
+
+        /* Modal Styles */
+        .modal-overlay { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: var(--card-bg); padding: 25px; border-radius: 8px; width: 320px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); border: 1px solid var(--border-color); }
+        .modal-content h3 { margin-bottom: 15px; font-size: 16px; }
+        .modal-content input { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color); color: var(--text-main); font-size: 14px; margin-bottom: 10px;}
+
+        .loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3000; justify-content: center; align-items: center; }
+        .loading-overlay.active { display: flex; }
+        .loading-spinner { background: white; padding: 20px; border-radius: 8px; text-align: center; }
+
+        @media (max-width: 768px) {
+            .app-container { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; flex-direction: row; overflow-x: auto; }
+            .sidebar .brand { display: none; }
+            .sidebar nav { flex-direction: row; padding: 0; }
+            .sidebar nav button { padding: 15px; font-size: 14px; white-space: nowrap; border-left: none; border-bottom: 2px solid transparent;}
+            .sidebar nav button.active { border-left: none; border-bottom: 2px solid var(--primary); }
+            .grid-2 { grid-template-columns: 1fr; }
+            .invoice-totals { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="brand">
+                <div style="font-size: 20px; color: #f8fafc; letter-spacing: 0.5px;">The Barber & Co.</div>
+                <div style="font-size: 11px; color: #d4af37; font-weight: normal; margin-top: 5px; letter-spacing: 2px;">SALON | STUDIO</div>
+            </div>
+            <nav>
+                <button class="nav-btn active" data-target="dashboard">Dashboard</button>
+                <button class="nav-btn" data-target="bookings">Bookings</button>
+                <button class="nav-btn" data-target="customers">Customers</button>
+                <button class="nav-btn" data-target="services">Services</button>
+                <button class="nav-btn" data-target="invoice">Create Invoice</button>
+                <button class="nav-btn" data-target="ledger">Ledger</button>
+                <button class="nav-btn" data-target="settings">Data & Settings</button>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <span id="last-saved" style="font-size: 14px; font-weight: bold; color: var(--secondary);">Initializing...</span>
+                    <span class="sync-status">
+                        <span id="sync-indicator" class="sync-indicator sync-offline"></span>
+                        <span id="sync-text">Offline</span>
+                    </span>
+                </div>
+                <div class="topbar-right">
+                    <button id="sync-now-btn" class="btn-action btn-success" style="margin-right: 10px;">Sync Now</button>
+                    <button id="theme-toggle">Toggle Dark Mode</button>
+                </div>
+            </header>
+
+            <section id="dashboard" class="view active-view">
+                <h2 style="margin-bottom: 20px;">Dashboard Overview</h2>
+                <div class="stats-grid">
+                    <div class="stat-card"><h3>Total Customers</h3><p id="stat-customers">0</p></div>
+                    <div class="stat-card"><h3>Total Invoices</h3><p id="stat-invoices">0</p></div>
+                    <div class="stat-card"><h3>Total Sales</h3><p id="stat-sales">Rs 0</p></div>
+                    <div class="stat-card"><h3>Payment Received</h3><p id="stat-advance">Rs 0</p></div>
+                    <div class="stat-card"><h3>Balance Pending</h3><p id="stat-balance">Rs 0</p></div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="revenueChart"></canvas>
+                </div>
+
+                <h3 style="margin-top: 30px; margin-bottom: 10px;">Upcoming Bookings</h3>
+                <div class="data-table-container">
+                    <table id="dash-upcoming-table">
+                        <thead><tr><th>Date & Time</th><th>Customer</th><th>Advance</th><th>Notes</th><th>Action</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="bookings" class="view">
+                <h2 style="margin-bottom: 20px;">Booking Management</h2>
+                <form id="booking-form" class="card-form">
+                    <input type="hidden" id="book-id">
+                    <div class="grid-2">
+                        <div>
+                            <label style="display:flex; justify-content:space-between; align-items:center;">
+                                Select Customer
+                                <button type="button" class="btn-action btn-success" style="padding: 2px 8px; font-size: 11px;" onclick="openQuickCustomer('book-customer')">+ New</button>
+                            </label>
+                            <select id="book-customer" required style="width:100%; margin-top:15px;"></select>
+                        </div>
+                        <div>
+                            <label>Booking Date & Time</label>
+                            <input type="datetime-local" id="book-date" required style="width:100%; margin-top:15px;">
+                        </div>
+                    </div>
+                    <div class="grid-2">
+                        <div>
+                            <label>Total Estimated Payment (Rs)</label>
+                            <input type="number" id="book-total" placeholder="0" min="0" style="width:100%; margin-top:15px;">
+                        </div>
+                        <div>
+                            <label>Advance Payment Received (Rs)</label>
+                            <input type="number" id="book-advance" placeholder="0" min="0" style="width:100%; margin-top:15px;">
+                        </div>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        <label>Notes / Service Required</label>
+                        <input type="text" id="book-notes" placeholder="Haircut & Beard" style="width:100%; margin-top:15px;">
+                    </div>
+                    <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Save / Update Booking</button>
+                </form>
+                <div class="data-table-container">
+                    <table id="bookings-table">
+                        <thead><tr><th>Date & Time</th><th>Customer</th><th>Total</th><th>Advance</th><th>Notes</th><th>Actions</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="customers" class="view">
+                <h2 style="margin-bottom: 20px;">Customer Management</h2>
+                <div class="action-buttons" style="margin-bottom: 20px;">
+                    <button id="btn-export-cust-excel" class="btn-success">Download Customer Data (Excel)</button>
+                </div>
+                <form id="customer-form" class="card-form">
+                    <input type="hidden" id="customer-id">
+                    <div class="grid-2">
+                        <div>
+                            <label>Customer Name</label>
+                            <input type="text" id="cust-name" placeholder="Ali" required style="width:100%; margin-top:15px;">
+                        </div>
+                        <div>
+                            <label>WhatsApp Number</label>
+                            <input type="tel" id="cust-phone" placeholder="923001234567" required style="width:100%; margin-top:15px;">
+                        </div>
+                    </div>
+                    <div class="grid-2">
+                        <div>
+                            <label>Email (Optional)</label>
+                            <input type="email" id="cust-email" placeholder="ali@example.com" style="width:100%; margin-top:15px;">
+                        </div>
+                        <div>
+                            <label>Notes</label>
+                            <input type="text" id="cust-notes" placeholder="Regular customer" style="width:100%; margin-top:15px;">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary">Save Customer</button>
+                </form>
+                <div class="data-table-container">
+                    <table id="customers-table">
+                        <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Actions</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="services" class="view">
+                <h2 style="margin-bottom: 20px;">Service Management</h2>
+                <form id="service-form" class="card-form">
+                    <input type="hidden" id="service-id">
+                    <div class="grid-2">
+                        <div>
+                            <label>Service Name</label>
+                            <input type="text" id="serv-name" placeholder="Hair Cut" required style="width:100%; margin-top:15px;">
+                        </div>
+                        <div>
+                            <label>Category</label>
+                            <input type="text" id="serv-category" placeholder="Salon" required style="width:100%; margin-top:15px;">
+                        </div>
+                    </div>
+                    <div>
+                        <label>Price (Rs)</label>
+                        <input type="number" id="serv-price" placeholder="1500" required style="width:100%; margin-top:15px;">
+                    </div>
+                    <button type="submit" class="btn-primary">Save Service</button>
+                </form>
+                <div class="data-table-container">
+                    <table id="services-table">
+                        <thead><tr><th>Service</th><th>Category</th><th>Price</th><th>Actions</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="invoice" class="view">
+                <h2 style="margin-bottom: 20px;">Create Invoice</h2>
+                <div class="card-form">
+                    <div class="grid-2">
+                        <div>
+                            <label>Invoice Number</label>
+                            <input type="text" id="inv-no" readonly style="width:100%; margin-top:15px;">
+                        </div>
+                        <div>
+                            <label>Date</label>
+                            <input type="date" id="inv-date" required style="width:100%; margin-top:15px;">
+                        </div>
+                        <div>
+                            <label style="display:flex; justify-content:space-between; align-items:center;">
+                                Customer Name
+                                <button type="button" class="btn-action btn-success" style="padding: 2px 8px; font-size: 11px;" onclick="openQuickCustomer('inv-customer')">+ New</button>
+                            </label>
+                            <select id="inv-customer" required style="width:100%; margin-top:15px;">
+                                <option value="">Select Customer</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>WhatsApp Number</label>
+                            <input type="text" id="inv-phone" readonly style="width:100%; margin-top:15px;">
+                        </div>
+                    </div>
+                    
+                    <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 10px 0;">
+                    <h3>Services Taken</h3>
+                    <div class="grid-add-service">
+                        <select id="inv-service-select"><option value="">Select Service</option></select>
+                        <input type="number" id="inv-qty" placeholder="Qty" value="1" min="1">
+                        <button type="button" id="btn-add-service" class="btn-primary">Add Service</button>
+                    </div>
+
+                    <div style="overflow-x:auto;">
+                        <table id="inv-items-table">
+                            <thead><tr><th>Service</th><th>Qty</th><th>Rate</th><th>Total</th><th>Action</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+
+                    <div class="invoice-totals">
+                        <div class="total-row"><span>Sub Total:</span> <span id="inv-subtotal">0</span></div>
+                        <div class="total-row">
+                            <span>Discount:</span>
+                            <div>
+                                <select id="inv-discount-type" style="width:60px; padding:2px;"><option value="percent">%</option><option value="amount">Rs</option></select>
+                                <input type="number" id="inv-discount-val" value="0" min="0" style="width:70px; padding:2px;">
+                            </div>
+                        </div>
+                        <div class="total-row"><span>Net Total:</span> <span id="inv-nettotal">0</span></div>
+                        <div class="total-row"><span>Payment Received:</span> <input type="number" id="inv-advance" value="0" min="0"></div>
+                        <div class="total-row"><strong>Balance Due:</strong> <strong id="inv-balance">0</strong></div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button id="btn-save-invoice" class="btn-primary">Save Invoice</button>
+                        <button id="btn-wa-invoice" class="btn-success">Send Invoice via WhatsApp</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="ledger" class="view">
+                <h2 style="margin-bottom: 20px;">Invoice Ledger</h2>
+                <div class="action-buttons">
+                    <button id="btn-export-excel" class="btn-success">Export Excel</button>
+                    <button id="btn-export-pdf" class="btn-danger">Export PDF</button>
+                </div>
+                <div class="data-table-container">
+                    <table id="ledger-table">
+                        <thead><tr><th>Inv No</th><th>Date</th><th>Customer</th><th>Total</th><th>Received</th><th>Balance</th><th>Actions</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="settings" class="view">
+                <h2 style="margin-bottom: 20px;">Data Management</h2>
+                <div class="card-form">
+                    <button id="btn-download-json" class="btn-primary" style="max-width: 300px;">Download Backup (JSON)</button>
+                    <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 15px 0;">
+                    <h3 style="margin-bottom: 10px;">Restore Data</h3>
+                    <input type="file" id="file-import-json" accept=".json" style="max-width: 300px;">
+                    <button id="btn-import-json" class="btn-danger" style="max-width: 300px; margin-top: 10px;">Upload & Restore Data</button>
+                    <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 15px 0;">
+                    <h3 style="margin-bottom: 10px;">Cloud Sync Status</h3>
+                    <p style="font-size: 14px;">Firebase Connection: <span id="firebase-status">Checking...</span></p>
+                    <button id="btn-force-sync" class="btn-success" style="max-width: 300px; margin-top: 10px;">Force Full Sync</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="quick-cust-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>Quick Add Customer</h3>
+            <input type="text" id="quick-cust-name" placeholder="Name" required>
+            <input type="tel" id="quick-cust-phone" placeholder="WhatsApp Number" required>
+            <div style="display:flex; gap: 10px; margin-top: 10px;">
+                <button class="btn-action btn-primary" onclick="saveQuickCustomer()" style="flex: 1;">Save</button>
+                <button class="btn-action btn-danger" onclick="closeQuickCustomer()" style="flex: 1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <p>Syncing with cloud...</p>
+            <p style="font-size: 12px; color: #666;">Please wait</p>
+        </div>
+    </div>
+
+    <script>
+        // Firebase Configuration and Initialization
+        const firebaseConfig = {
+            apiKey: "AIzaSyDaSTdPnCTzUJot0ZKE1pCZ3w2EfVuur7c",
+            authDomain: "the-barber-and-co.firebaseapp.com",
+            projectId: "the-barber-and-co",
+            storageBucket: "the-barber-and-co.firebasestorage.app",
+            messagingSenderId: "1004926656391",
+            appId: "1:1004926656391:web:308a14aea380ba99f8fd22",
+            measurementId: "G-ET0GHMBB4P"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db_firestore = firebase.firestore();
+        
+        // Enable offline persistence
+        db_firestore.enablePersistence({ synchronizeTabs: true })
+            .then(() => {
+                console.log("Firebase offline persistence enabled");
+            })
+            .catch((err) => {
+                if (err.code === 'failed-precondition') {
+                    console.warn("Multiple tabs open, persistence can only be enabled in one tab at a time.");
+                } else if (err.code === 'unimplemented') {
+                    console.warn("The current browser does not support all of the features required to enable persistence");
+                }
+            });
+
+        // Database Structure & Initialization
+        let db = {
+            customers: [],
+            services: [],
+            invoices: [],
+            bookings: []
+        };
+
+        let revenueChartInstance = null;
+        let quickAddTarget = null;
+        let isOnline = false;
+        let lastSyncTimestamp = null;
+
+        // Check online status
+        function updateOnlineStatus() {
+            isOnline = navigator.onLine;
+            const indicator = document.getElementById('sync-indicator');
+            const text = document.getElementById('sync-text');
+            
+            if (indicator && text) {
+                if (isOnline) {
+                    indicator.className = 'sync-indicator sync-online';
+                    text.textContent = 'Online';
+                } else {
+                    indicator.className = 'sync-indicator sync-offline';
+                    text.textContent = 'Offline';
+                }
+            }
+        }
+
+        window.addEventListener('online', () => {
+            updateOnlineStatus();
+            syncWithFirebase();
+        });
+        
+        window.addEventListener('offline', () => {
+            updateOnlineStatus();
+        });
+
+        // Firebase CRUD Operations
+        async function syncWithFirebase() {
+            if (!isOnline) {
+                showToast('You are offline. Changes will sync when connection is restored.', 'warning');
+                return false;
+            }
+
+            try {
+                document.getElementById('loading-overlay').classList.add('active');
+                
+                // Sync customers
+                await syncCollection('customers');
+                // Sync services
+                await syncCollection('services');
+                // Sync invoices
+                await syncCollection('invoices');
+                // Sync bookings
+                await syncCollection('bookings');
+
+                lastSyncTimestamp = new Date().toISOString();
+                localStorage.setItem('lastSyncTimestamp', lastSyncTimestamp);
+                document.getElementById('last-saved').innerText = `Last Synced: ${new Date().toLocaleTimeString()}`;
+                document.getElementById('firebase-status').textContent = 'Connected & Synced';
+                document.getElementById('firebase-status').style.color = '#22c55e';
+                
+                document.getElementById('loading-overlay').classList.remove('active');
+                return true;
+            } catch (error) {
+                console.error("Sync error:", error);
+                document.getElementById('firebase-status').textContent = 'Sync Failed';
+                document.getElementById('firebase-status').style.color = '#ef4444';
+                document.getElementById('loading-overlay').classList.remove('active');
+                showToast('Sync failed. Please try again.', 'error');
+                return false;
+            }
+        }
+
+        async function syncCollection(collectionName) {
+            // First, push local changes to Firebase
+            const localData = db[collectionName] || [];
+            
+            // Get all documents from Firebase
+            const snapshot = await db_firestore.collection(collectionName).get();
+            const firebaseData = [];
+            snapshot.forEach(doc => {
+                firebaseData.push({ id: doc.id, ...doc.data() });
+            });
+
+            // Merge strategy: Local changes take precedence for same IDs
+            const mergedMap = new Map();
+            
+            // Add Firebase data first
+            firebaseData.forEach(item => {
+                mergedMap.set(item.id.toString(), item);
+            });
+
+            // Override with local data (local changes are more recent)
+            localData.forEach(item => {
+                mergedMap.set(item.id.toString(), item);
+            });
+
+            // Convert map back to array
+            const mergedData = Array.from(mergedMap.values());
+            
+            // Update local database
+            db[collectionName] = mergedData;
+
+            // Push merged data to Firebase using batch writes
+            const batch = db_firestore.batch();
+            const existingDocs = new Set(firebaseData.map(d => d.id.toString()));
+            const mergedIds = new Set(mergedData.map(d => d.id.toString()));
+
+            // Delete documents that don't exist in merged data
+            existingDocs.forEach(id => {
+                if (!mergedIds.has(id)) {
+                    const docRef = db_firestore.collection(collectionName).doc(id.toString());
+                    batch.delete(docRef);
+                }
+            });
+
+            // Add or update all merged documents
+            mergedData.forEach(item => {
+                const docRef = db_firestore.collection(collectionName).doc(item.id.toString());
+                const { id, ...dataWithoutId } = item;
+                batch.set(docRef, dataWithoutId, { merge: true });
+            });
+
+            await batch.commit();
+        }
+
+        async function loadFromFirebase() {
+            if (!isOnline) {
+                console.log("Offline - loading from local storage only");
+                return false;
+            }
+
+            try {
+                document.getElementById('loading-overlay').classList.add('active');
+                
+                const collections = ['customers', 'services', 'invoices', 'bookings'];
+                
+                for (const collectionName of collections) {
+                    const snapshot = await db_firestore.collection(collectionName).get();
+                    const data = [];
+                    snapshot.forEach(doc => {
+                        data.push({ id: parseInt(doc.id), ...doc.data() });
+                    });
+                    
+                    if (data.length > 0) {
+                        db[collectionName] = data;
+                    }
+                }
+
+                lastSyncTimestamp = new Date().toISOString();
+                localStorage.setItem('lastSyncTimestamp', lastSyncTimestamp);
+                document.getElementById('last-saved').innerText = `Loaded from Cloud: ${new Date().toLocaleTimeString()}`;
+                document.getElementById('firebase-status').textContent = 'Connected & Synced';
+                document.getElementById('firebase-status').style.color = '#22c55e';
+                
+                document.getElementById('loading-overlay').classList.remove('active');
+                return true;
+            } catch (error) {
+                console.error("Load from Firebase error:", error);
+                document.getElementById('firebase-status').textContent = 'Load Failed';
+                document.getElementById('firebase-status').style.color = '#ef4444';
+                document.getElementById('loading-overlay').classList.remove('active');
+                return false;
+            }
+        }
+
+        // Modified save function to include Firebase sync
+        async function saveData(syncToCloud = true) {
+            // Save to localStorage as backup
+            localStorage.setItem('posData', JSON.stringify(db));
+            localStorage.setItem('posDataBackup', JSON.stringify(db));
+            
+            document.getElementById('last-saved').innerText = `Last Saved Locally: ${new Date().toLocaleTimeString()}`;
+            
+            if (syncToCloud && isOnline) {
+                const success = await syncWithFirebase();
+                if (success) {
+                    document.getElementById('last-saved').innerText = `Last Synced: ${new Date().toLocaleTimeString()}`;
+                }
+            }
+            
+            refreshAllViews();
+        }
+
+        // Initial Load
+        async function init() {
+            updateOnlineStatus();
+            
+            // Load from localStorage first for immediate display
+            const localData = localStorage.getItem('posData');
+            if (localData) {
+                try {
+                    db = JSON.parse(localData);
+                    if(!db.bookings) db.bookings = [];
+                } catch(e) {
+                    console.error("Error reading LocalStorage data", e);
+                }
+            }
+            
+            // Load last sync timestamp
+            lastSyncTimestamp = localStorage.getItem('lastSyncTimestamp');
+            
+            // Default setup for theme
+            if(localStorage.getItem('theme') === 'dark') {
+                document.body.classList.add('dark-mode');
+            }
+
+            bindEvents();
+            refreshAllViews();
+
+            // Try to load from Firebase if online
+            if (isOnline) {
+                document.getElementById('last-saved').innerText = 'Connecting to cloud...';
+                const loaded = await loadFromFirebase();
+                if (loaded) {
+                    refreshAllViews();
+                    document.getElementById('last-saved').innerText = `Loaded from Cloud: ${new Date().toLocaleTimeString()}`;
+                } else {
+                    document.getElementById('last-saved').innerText = `Using Local Data: ${new Date().toLocaleTimeString()}`;
+                }
+            } else {
+                document.getElementById('last-saved').innerText = `Offline Mode: ${new Date().toLocaleTimeString()}`;
+            }
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            if (type === 'error') {
+                toast.classList.add('toast-error');
+            }
+            toast.innerText = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Navigation & Events
+        function bindEvents() {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+                    e.target.classList.add('active');
+                    document.getElementById(e.target.dataset.target).classList.add('active-view');
+                });
+            });
+
+            document.getElementById('theme-toggle').addEventListener('click', () => {
+                document.body.classList.toggle('dark-mode');
+                localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+                if(revenueChartInstance) renderCharts();
+            });
+
+            // Sync button
+            document.getElementById('sync-now-btn').addEventListener('click', async () => {
+                if (isOnline) {
+                    const success = await syncWithFirebase();
+                    if (success) {
+                        showToast('Sync completed successfully!');
+                    } else {
+                        showToast('Sync failed. Please try again.', 'error');
+                    }
+                } else {
+                    showToast('You are offline. Please check your internet connection.', 'error');
+                }
+            });
+
+            // Force sync in settings
+            document.getElementById('btn-force-sync').addEventListener('click', async () => {
+                if (isOnline) {
+                    const success = await syncWithFirebase();
+                    if (success) {
+                        refreshAllViews();
+                        showToast('Full sync completed successfully!');
+                    } else {
+                        showToast('Full sync failed.', 'error');
+                    }
+                } else {
+                    showToast('You are offline.', 'error');
+                }
+            });
+
+            // Forms Submit
+            document.getElementById('customer-form').addEventListener('submit', handleCustomerSubmit);
+            document.getElementById('service-form').addEventListener('submit', handleServiceSubmit);
+            document.getElementById('booking-form').addEventListener('submit', handleBookingSubmit);
+            
+            // Customer Export
+            document.getElementById('btn-export-cust-excel').addEventListener('click', exportCustomersExcel);
+
+            // Invoice Events
+            document.getElementById('inv-customer').addEventListener('change', handleCustomerSelect);
+            document.getElementById('btn-add-service').addEventListener('click', addServiceToInvoice);
+            document.getElementById('inv-discount-val').addEventListener('input', calculateTotals);
+            document.getElementById('inv-discount-type').addEventListener('change', calculateTotals);
+            document.getElementById('inv-advance').addEventListener('input', calculateTotals);
+            document.getElementById('btn-save-invoice').addEventListener('click', saveInvoice);
+            document.getElementById('btn-wa-invoice').addEventListener('click', sendInvoiceWhatsApp);
+            
+            // Ledger Exports
+            document.getElementById('btn-export-excel').addEventListener('click', exportLedgerExcel);
+            document.getElementById('btn-export-pdf').addEventListener('click', exportLedgerPDF);
+
+            // Data settings Backup/Restore
+            document.getElementById('btn-download-json').addEventListener('click', downloadBackup);
+            document.getElementById('btn-import-json').addEventListener('click', importBackup);
+        }
+
+        // Quick Add Customer Modal Logic
+        window.openQuickCustomer = function(targetElementId) {
+            quickAddTarget = targetElementId;
+            document.getElementById('quick-cust-modal').classList.add('active');
+        };
+
+        window.closeQuickCustomer = function() {
+            quickAddTarget = null;
+            document.getElementById('quick-cust-name').value = '';
+            document.getElementById('quick-cust-phone').value = '';
+            document.getElementById('quick-cust-modal').classList.remove('active');
+        };
+
+        window.saveQuickCustomer = function() {
+            const name = document.getElementById('quick-cust-name').value;
+            const phone = document.getElementById('quick-cust-phone').value;
+            
+            if(!name || !phone) {
+                alert('Please enter both Name and WhatsApp number.');
+                return;
+            }
+
+            const newCustomer = {
+                id: Date.now(),
+                name: name,
+                phone: phone,
+                email: '',
+                notes: 'Added via Quick Add'
+            };
+
+            db.customers.push(newCustomer);
+            saveData();
+
+            if(quickAddTarget) {
+                const selectEl = document.getElementById(quickAddTarget);
+                if(selectEl) {
+                    selectEl.value = newCustomer.id;
+                    if(quickAddTarget === 'inv-customer') {
+                        handleCustomerSelect({target: selectEl});
+                    }
+                }
+            }
+            
+            closeQuickCustomer();
+            showToast('Customer Created & Selected!');
+        };
+
+        // Core UI Refreshes
+        function refreshAllViews() {
+            renderCustomers();
+            renderServices();
+            renderBookings();
+            renderDashboard();
+            populateInvoiceDropdowns();
+            if (!document.getElementById('inv-no').value || document.getElementById('inv-no').value === '') {
+                generateInvoiceNumber();
+            }
+        }
+
+        // Booking Operations
+        function handleBookingSubmit(e) {
+            e.preventDefault();
+            const bId = document.getElementById('book-id').value;
+            const custId = document.getElementById('book-customer').value;
+            if(!custId) { alert('Please select a customer first.'); return; }
+            
+            const customer = db.customers.find(c => c.id == custId);
+            const date = document.getElementById('book-date').value;
+            const advance = document.getElementById('book-advance').value || 0;
+            const total = document.getElementById('book-total').value || 0;
+            const notes = document.getElementById('book-notes').value;
+
+            const booking = {
+                id: bId ? parseInt(bId) : Date.now(),
+                customerId: custId,
+                customerName: customer.name,
+                phone: customer.phone,
+                date: date,
+                total: parseFloat(total),
+                advance: parseFloat(advance),
+                notes: notes
+            };
+            
+            if(!db.bookings) db.bookings = [];
+            
+            if (bId) {
+                const index = db.bookings.findIndex(b => b.id == bId);
+                if (index !== -1) db.bookings[index] = booking;
+                showToast('Booking updated successfully!');
+            } else {
+                db.bookings.push(booking);
+                showToast('Booking saved successfully!');
+            }
+            
+            document.getElementById('book-id').value = '';
+            e.target.reset();
+            saveData();
+        }
+
+        function renderBookings() {
+            const tbody = document.querySelector('#bookings-table tbody');
+            tbody.innerHTML = '';
+            if(!db.bookings) return;
+            
+            let sortedBookings = [...db.bookings].sort((a,b) => new Date(a.date) - new Date(b.date));
+            
+            sortedBookings.forEach(b => {
+                const tr = document.createElement('tr');
+                const formattedDate = new Date(b.date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+                tr.innerHTML = `
+                    <td>${formattedDate}</td>
+                    <td>${b.customerName}</td>
+                    <td>Rs ${b.total || 0}</td>
+                    <td>Rs ${b.advance || 0}</td>
+                    <td>${b.notes || '-'}</td>
+                    <td>
+                        <div style="display:flex; gap:5px;">
+                            <button class="btn-action btn-primary" onclick="editBooking(${b.id})">Edit</button>
+                            <button class="btn-action btn-success" onclick="sendBookingWhatsApp(${b.id})">WA</button>
+                            <button class="btn-action btn-danger" onclick="deleteBooking(${b.id})">Del</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.editBooking = function(id) {
+            const b = db.bookings.find(x => x.id === id);
+            if(!b) return;
+            
+            document.getElementById('book-id').value = b.id;
+            document.getElementById('book-customer').value = b.customerId;
+            document.getElementById('book-date').value = b.date;
+            document.getElementById('book-total').value = b.total || 0;
+            document.getElementById('book-advance').value = b.advance || 0;
+            document.getElementById('book-notes').value = b.notes || '';
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+            document.querySelector('[data-target="bookings"]').classList.add('active');
+            document.getElementById('bookings').classList.add('active-view');
+        }
+
+        window.sendBookingWhatsApp = function(id) {
+            const b = db.bookings.find(x => x.id === id);
+            if(!b) return;
+            
+            const dateObj = new Date(b.date);
+            const dateOnly = dateObj.toLocaleDateString('en-US', { dateStyle: 'medium' });
+            const timeOnly = dateObj.toLocaleTimeString('en-US', { timeStyle: 'short' });
+            
+            const totalVal = b.total || 0;
+            const advanceVal = b.advance || 0;
+            const balanceVal = totalVal - advanceVal;
+
+            let text = `*BOOKING CONFIRMATION*%0A`;
+            text += `-----------------------------------%0A`;
+            text += `*Customer:* ${b.customerName}%0A`;
+            text += `*Date:* ${dateOnly}%0A`;
+            text += `*Time:* ${timeOnly}%0A`;
+            text += `-----------------------------------%0A`;
+            text += `*Services Required:* ${b.notes || 'As discussed'}%0A`;
+            text += `*Total Payment:* Rs ${totalVal}%0A`;
+            text += `*Advance Paid:* Rs ${advanceVal}%0A`;
+            text += `*Balance Payment:* Rs ${balanceVal}%0A`;
+            text += `-----------------------------------%0A`;
+            text += `Looking forward to seeing you at The Barber & Co.!`;
+            
+            let cleanPhone = b.phone.replace(/[^0-9]/g, "");
+            window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
+        }
+
+        window.deleteBooking = function(id) {
+            if(confirm('Delete this booking?')) {
+                db.bookings = db.bookings.filter(b => b.id !== id);
+                saveData();
+                showToast('Booking deleted');
+            }
+        }
+
+        // Customer Operations
+        function handleCustomerSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById('customer-id').value;
+            const customer = {
+                id: id ? parseInt(id) : Date.now(),
+                name: document.getElementById('cust-name').value,
+                phone: document.getElementById('cust-phone').value,
+                email: document.getElementById('cust-email').value,
+                notes: document.getElementById('cust-notes').value
+            };
+
+            if (id) {
+                const index = db.customers.findIndex(c => c.id == id);
+                if(index !== -1) db.customers[index] = customer;
+            } else {
+                db.customers.push(customer);
+            }
+            
+            saveData();
+            e.target.reset();
+            document.getElementById('customer-id').value = '';
+            showToast('Customer saved successfully!');
+        }
+
+        function renderCustomers() {
+            const tbody = document.querySelector('#customers-table tbody');
+            tbody.innerHTML = '';
+            db.customers.forEach(c => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${c.name}</td>
+                    <td>${c.phone}</td>
+                    <td>${c.email || '-'}</td>
+                    <td><button class="btn-action btn-danger" onclick="deleteCustomer(${c.id})">Delete</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.deleteCustomer = function(id) {
+            if(confirm('Are you sure you want to delete this customer?')) {
+                db.customers = db.customers.filter(c => c.id !== id);
+                saveData();
+                showToast('Customer deleted');
+            }
+        }
+
+        // Export Customer Data to Excel
+        function exportCustomersExcel() {
+            if(!db.customers.length) { alert('No customer data to export.'); return; }
+            const cleanCust = db.customers.map(c => ({
+                "Customer Name": c.name,
+                "WhatsApp Number": c.phone,
+                "Email": c.email || "-",
+                "Notes": c.notes || "-"
+            }));
+            const worksheet = XLSX.utils.json_to_sheet(cleanCust);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Customers");
+            XLSX.writeFile(workbook, "the-barber-co-customers.xlsx");
+        }
+
+        // Service Operations
+        function handleServiceSubmit(e) {
+            e.preventDefault();
+            const service = {
+                id: Date.now(),
+                service: document.getElementById('serv-name').value,
+                category: document.getElementById('serv-category').value,
+                price: parseFloat(document.getElementById('serv-price').value)
+            };
+            db.services.push(service);
+            saveData();
+            e.target.reset();
+            showToast('Service saved successfully!');
+        }
+
+        function renderServices() {
+            const tbody = document.querySelector('#services-table tbody');
+            tbody.innerHTML = '';
+            db.services.forEach(s => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${s.service}</td>
+                    <td>${s.category}</td>
+                    <td>Rs ${s.price}</td>
+                    <td><button class="btn-action btn-danger" onclick="deleteService(${s.id})">Delete</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.deleteService = function(id) {
+            if(confirm('Are you sure you want to delete this service?')) {
+                db.services = db.services.filter(s => s.id !== id);
+                saveData();
+                showToast('Service deleted');
+            }
+        }
+
+        // Invoices Architecture
+        let currentInvoiceItems = [];
+
+        function populateInvoiceDropdowns() {
+            const custSelect = document.getElementById('inv-customer');
+            const bookSelect = document.getElementById('book-customer');
+            
+            const currentSelected = custSelect.value;
+            const currentBookSelected = bookSelect ? bookSelect.value : null;
+
+            custSelect.innerHTML = '<option value="">Select Customer</option>';
+            if(bookSelect) bookSelect.innerHTML = '<option value="">Select Customer</option>';
+
+            db.customers.forEach(c => {
+                custSelect.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+                if(bookSelect) bookSelect.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+            });
+
+            if (currentSelected) custSelect.value = currentSelected;
+            if (currentBookSelected && bookSelect) bookSelect.value = currentBookSelected;
+
+            const servSelect = document.getElementById('inv-service-select');
+            servSelect.innerHTML = '<option value="">Select Service</option>';
+            db.services.forEach(s => {
+                servSelect.innerHTML += `<option value="${s.id}">${s.service} - Rs ${s.price}</option>`;
+            });
+        }
+
+        function handleCustomerSelect(e) {
+            const custId = e.target.value;
+            const cust = db.customers.find(c => c.id == custId);
+            
+            if(cust) {
+                document.getElementById('inv-phone').value = cust.phone;
+                
+                if(db.bookings && db.bookings.length > 0) {
+                    const activeBooking = db.bookings.find(b => b.customerId == custId);
+                    if(activeBooking && activeBooking.advance > 0) {
+                        document.getElementById('inv-advance').value = activeBooking.advance;
+                        showToast(`Advance payment of Rs ${activeBooking.advance} pulled from active booking.`);
+                    } else {
+                        document.getElementById('inv-advance').value = 0;
+                    }
+                } else {
+                    document.getElementById('inv-advance').value = 0;
+                }
+            } else {
+                document.getElementById('inv-phone').value = '';
+                document.getElementById('inv-advance').value = 0;
+            }
+            calculateTotals();
+        }
+
+        function generateInvoiceNumber() {
+            const date = new Date();
+            document.getElementById('inv-no').value = `INV-${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}-${String(Date.now()).slice(-4)}`;
+            document.getElementById('inv-date').valueAsDate = new Date();
+        }
+
+        function addServiceToInvoice() {
+            const select = document.getElementById('inv-service-select');
+            const qty = parseInt(document.getElementById('inv-qty').value);
+            
+            if(!select.value) return;
+
+            const service = db.services.find(s => s.id == select.value);
+            const item = {
+                id: Date.now(),
+                serviceId: service.id,
+                name: service.service,
+                qty: qty,
+                rate: service.price,
+                total: service.price * qty
+            };
+
+            currentInvoiceItems.push(item);
+            renderInvoiceItems();
+            calculateTotals();
+        }
+
+        function renderInvoiceItems() {
+            const tbody = document.querySelector('#inv-items-table tbody');
+            tbody.innerHTML = '';
+            currentInvoiceItems.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${item.name}</td>
+                    <td>${item.qty}</td>
+                    <td>${item.rate}</td>
+                    <td>${item.total}</td>
+                    <td><button class="btn-action btn-danger" onclick="removeInvoiceItem(${item.id})">X</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.removeInvoiceItem = function(id) {
+            currentInvoiceItems = currentInvoiceItems.filter(i => i.id !== id);
+            renderInvoiceItems();
+            calculateTotals();
+        }
+
+        function calculateTotals() {
+            let subtotal = currentInvoiceItems.reduce((sum, item) => sum + item.total, 0);
+            document.getElementById('inv-subtotal').innerText = subtotal;
+
+            const discountType = document.getElementById('inv-discount-type').value;
+            const discountVal = parseFloat(document.getElementById('inv-discount-val').value) || 0;
+            
+            let discountAmt = 0;
+            if (discountType === 'percent') discountAmt = subtotal * (discountVal / 100);
+            else discountAmt = discountVal;
+
+            let netTotal = subtotal - discountAmt;
+            document.getElementById('inv-nettotal').innerText = netTotal;
+
+            const advance = parseFloat(document.getElementById('inv-advance').value) || 0;
+            document.getElementById('inv-balance').innerText = netTotal - advance;
+        }
+
+        function saveInvoice() {
+            const custId = document.getElementById('inv-customer').value;
+            if(currentInvoiceItems.length === 0 || !custId) {
+                alert('Please pick a customer and add at least one service.');
+                return;
+            }
+
+            const cust = db.customers.find(c => c.id == custId);
+
+            const invoice = {
+                invoiceNo: document.getElementById('inv-no').value,
+                date: document.getElementById('inv-date').value,
+                customerName: cust.name,
+                phone: cust.phone,
+                services: [...currentInvoiceItems],
+                subtotal: parseFloat(document.getElementById('inv-subtotal').innerText),
+                discount: parseFloat(document.getElementById('inv-subtotal').innerText) - parseFloat(document.getElementById('inv-nettotal').innerText),
+                netTotal: parseFloat(document.getElementById('inv-nettotal').innerText),
+                advance: parseFloat(document.getElementById('inv-advance').value) || 0,
+                balance: parseFloat(document.getElementById('inv-balance').innerText)
+            };
+
+            const existingIndex = db.invoices.findIndex(i => i.invoiceNo === invoice.invoiceNo);
+            if(existingIndex !== -1) {
+                db.invoices[existingIndex] = invoice;
+                showToast('Invoice Updated Successfully!');
+            } else {
+                db.invoices.push(invoice);
+                showToast('Invoice Created Successfully!');
+            }
+            
+            if (db.bookings) {
+                db.bookings = db.bookings.filter(b => b.customerId != custId);
+            }
+            
+            saveData();
+            
+            currentInvoiceItems = [];
+            renderInvoiceItems();
+            document.getElementById('inv-discount-val').value = 0;
+            document.getElementById('inv-advance').value = 0;
+            document.getElementById('inv-customer').value = '';
+            document.getElementById('inv-phone').value = '';
+            calculateTotals();
+            generateInvoiceNumber();
+            
+            document.querySelector('[data-target="ledger"]').click();
+        }
+
+        function sendInvoiceWhatsApp() {
+            const custSelect = document.getElementById('inv-customer');
+            if(!custSelect.value) { alert('Please select a customer first.'); return; }
+            
+            const custName = custSelect.options[custSelect.selectedIndex].text;
+            const phone = document.getElementById('inv-phone').value;
+            const invNo = document.getElementById('inv-no').value;
+            const invDate = document.getElementById('inv-date').value;
+            
+            if(!phone) { alert('No valid mobile number assigned to customer.'); return; }
+            if(currentInvoiceItems.length === 0) { alert('Please add services to the invoice first.'); return; }
+
+            let serviceList = currentInvoiceItems.map(i => `- ${i.name} (x${i.qty}) @ Rs ${i.rate} = Rs ${i.total}`).join('%0A');
+            
+            const subtotal = document.getElementById('inv-subtotal').innerText;
+            const netTotal = document.getElementById('inv-nettotal').innerText;
+            const discount = parseFloat(subtotal) - parseFloat(netTotal);
+            const advance = document.getElementById('inv-advance').value || 0;
+            const balance = document.getElementById('inv-balance').innerText;
+
+            let text = `*INVOICE*%0A`;
+            text += `-----------------------------------%0A`;
+            text += `*Invoice No:* ${invNo}%0A`;
+            text += `*Date:* ${invDate}%0A`;
+            text += `*Customer:* ${custName}%0A`;
+            text += `-----------------------------------%0A`;
+            text += `*Services:*%0A${serviceList}%0A`;
+            text += `-----------------------------------%0A`;
+            text += `*Sub Total:* Rs ${subtotal}%0A`;
+            text += `*Discount:* Rs ${discount}%0A`;
+            text += `*Net Total:* Rs ${netTotal}%0A`;
+            text += `*Payment Received:* Rs ${advance}%0A`; 
+            text += `*Balance Due:* Rs ${balance}%0A`;
+            text += `-----------------------------------%0A`;
+            text += `Thank you for your visit to The Barber & Co.!`;
+            
+            let cleanPhone = phone.replace(/[^0-9]/g, "");
+            window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
+        }
+
+        // Dashboard Visuals & Ledger Performance
+        function renderDashboard() {
+            document.getElementById('stat-customers').innerText = db.customers.length;
+            document.getElementById('stat-invoices').innerText = db.invoices.length;
+            
+            let totalSales = 0, totalAdvance = 0, totalBalance = 0;
+            db.invoices.forEach(inv => {
+                totalSales += inv.netTotal;
+                totalAdvance += inv.advance;
+                totalBalance += inv.balance;
+            });
+
+            document.getElementById('stat-sales').innerText = `Rs ${totalSales}`;
+            document.getElementById('stat-advance').innerText = `Rs ${totalAdvance}`;
+            document.getElementById('stat-balance').innerText = `Rs ${totalBalance}`;
+
+            renderCharts();
+            renderLedger();
+            renderUpcomingBookings();
+        }
+
+        function renderUpcomingBookings() {
+            const tbody = document.querySelector('#dash-upcoming-table tbody');
+            if(!tbody) return;
+            tbody.innerHTML = '';
+            
+            const now = new Date();
+            let upcoming = db.bookings
+                .filter(b => new Date(b.date) >= now)
+                .sort((a,b) => new Date(a.date) - new Date(b.date))
+                .slice(0, 5);
+            
+            if(upcoming.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--secondary);">No upcoming bookings found.</td></tr>';
+                return;
+            }
+
+            upcoming.forEach(b => {
+                const tr = document.createElement('tr');
+                const formattedDate = new Date(b.date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+                tr.innerHTML = `
+                    <td>${formattedDate}</td>
+                    <td>${b.customerName}</td>
+                    <td>Rs ${b.advance || 0}</td>
+                    <td>${b.notes || '-'}</td>
+                    <td><button class="btn-action btn-success" onclick="sendBookingWhatsApp(${b.id})">WA Confirm</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderCharts() {
+            const ctx = document.getElementById('revenueChart').getContext('2d');
+            if(revenueChartInstance) revenueChartInstance.destroy();
+            
+            const labels = db.invoices.map(i => i.invoiceNo).slice(-7);
+            const data = db.invoices.map(i => i.netTotal).slice(-7);
+
+            const isDark = document.body.classList.contains('dark-mode');
+
+            revenueChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels.length ? labels : ['No Sales Recorded'],
+                    datasets: [{
+                        label: 'Sales Breakdown (Rs)',
+                        data: data.length ? data : [0],
+                        backgroundColor: '#d4af37',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            grid: { color: isDark ? '#334155' : '#e2e8f0' },
+                            ticks: { color: isDark ? '#f8fafc' : '#334155' }
+                        },
+                        x: {
+                            grid: { color: isDark ? '#334155' : '#e2e8f0' },
+                            ticks: { color: isDark ? '#f8fafc' : '#334155' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: isDark ? '#f8fafc' : '#334155' } }
+                    }
+                }
+            });
+        }
+
+        function renderLedger() {
+            const tbody = document.querySelector('#ledger-table tbody');
+            tbody.innerHTML = '';
+            db.invoices.forEach(inv => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${inv.invoiceNo}</td>
+                    <td>${inv.date}</td>
+                    <td>${inv.customerName}</td>
+                    <td>Rs ${inv.netTotal}</td>
+                    <td>Rs ${inv.advance}</td>
+                    <td>Rs ${inv.balance}</td>
+                    <td>
+                        <div style="display:flex; gap:5px;">
+                            <button class="btn-action btn-primary" onclick="editInvoice('${inv.invoiceNo}')">Edit</button>
+                            <button class="btn-action btn-success" onclick="resendWhatsAppLedger('${inv.invoiceNo}')">WhatsApp</button>
+                            <button class="btn-action btn-danger" onclick="deleteInvoice('${inv.invoiceNo}')">Delete</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Edit Invoice Logic
+        window.editInvoice = function(invNo) {
+            const inv = db.invoices.find(i => i.invoiceNo === invNo);
+            if(!inv) return;
+            
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+            document.querySelector('[data-target="invoice"]').classList.add('active');
+            document.getElementById('invoice').classList.add('active-view');
+            
+            document.getElementById('inv-no').value = inv.invoiceNo;
+            document.getElementById('inv-date').value = inv.date;
+            
+            const cust = db.customers.find(c => c.name === inv.customerName && c.phone === inv.phone);
+            if(cust) {
+                document.getElementById('inv-customer').value = cust.id;
+                document.getElementById('inv-phone').value = cust.phone;
+            } else {
+                alert('Warning: Original customer details might have been modified or deleted. Please re-select the customer.');
+                document.getElementById('inv-customer').value = '';
+                document.getElementById('inv-phone').value = inv.phone;
+            }
+            
+            currentInvoiceItems = [...inv.services];
+            renderInvoiceItems();
+            
+            document.getElementById('inv-discount-type').value = 'amount';
+            document.getElementById('inv-discount-val').value = inv.discount;
+            document.getElementById('inv-advance').value = inv.advance;
+            
+            calculateTotals();
+        }
+
+        window.resendWhatsAppLedger = function(invNo) {
+            const inv = db.invoices.find(i => i.invoiceNo === invNo);
+            if(!inv) return;
+            
+            if(!inv.phone) { alert('No valid mobile number assigned to this invoice.'); return; }
+            if(!inv.services || inv.services.length === 0) { alert('No services in this invoice.'); return; }
+
+            let serviceList = inv.services.map(i => `- ${i.name} (x${i.qty}) @ Rs ${i.rate} = Rs ${i.total}`).join('%0A');
+            
+            let text = `*INVOICE*%0A`;
+            text += `-----------------------------------%0A`;
+            text += `*Invoice No:* ${inv.invoiceNo}%0A`;
+            text += `*Date:* ${inv.date}%0A`;
+            text += `*Customer:* ${inv.customerName}%0A`;
+            text += `-----------------------------------%0A`;
+            text += `*Services:*%0A${serviceList}%0A`;
+            text += `-----------------------------------%0A`;
+            text += `*Sub Total:* Rs ${inv.subtotal}%0A`;
+            text += `*Discount:* Rs ${inv.discount}%0A`;
+            text += `*Net Total:* Rs ${inv.netTotal}%0A`;
+            text += `*Payment Received:* Rs ${inv.advance}%0A`; 
+            text += `*Balance Due:* Rs ${inv.balance}%0A`;
+            text += `-----------------------------------%0A`;
+            text += `Thank you for your visit to The Barber & Co.!`;
+            
+            let cleanPhone = inv.phone.replace(/[^0-9]/g, "");
+            window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
+        }
+
+        window.deleteInvoice = function(invNo) {
+            if(confirm('Are you sure you want to delete this invoice?')) {
+                db.invoices = db.invoices.filter(i => i.invoiceNo !== invNo);
+                saveData();
+                showToast('Invoice removed');
+            }
+        }
+
+        // SheetJS Integration (Excel Export)
+        function exportLedgerExcel() {
+            if(!db.invoices.length) { alert('No invoice history to export.'); return; }
+            const cleanLedger = db.invoices.map(i => ({
+                "Invoice No": i.invoiceNo,
+                "Date": i.date,
+                "Customer Name": i.customerName,
+                "WhatsApp": i.phone,
+                "Subtotal": i.subtotal,
+                "Discount": i.discount,
+                "Net Total": i.netTotal,
+                "Payment Received": i.advance,
+                "Balance Remaining": i.balance
+            }));
+            const worksheet = XLSX.utils.json_to_sheet(cleanLedger);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Ledger");
+            XLSX.writeFile(workbook, "invoice-ledger.xlsx");
+        }
+
+        // jsPDF Integration (PDF Export)
+        function exportLedgerPDF() {
+            if(!db.invoices.length) { alert('No invoices to print.'); return; }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFont("Helvetica", "bold");
+            doc.text("THE BARBER & CO. - INVOICE LEDGER", 14, 15);
+            doc.setFontSize(10);
+            doc.setFont("Helvetica", "normal");
+            
+            let y = 25;
+            doc.text("Inv No    Date          Customer               Total       Received    Balance", 14, y);
+            doc.line(14, y + 2, 195, y + 2);
+            y += 10;
+
+            db.invoices.forEach(inv => {
+                if(y > 280) { doc.addPage(); y = 20; }
+                doc.text(`${inv.invoiceNo.padEnd(10)}  ${inv.date}    ${inv.customerName.padEnd(20)} Rs ${inv.netTotal.toString().padEnd(8)} Rs ${inv.advance.toString().padEnd(8)} Rs ${inv.balance}`, 14, y);
+                y += 8;
+            });
+            doc.save("ledger.pdf");
+        }
+
+        // Data Serialization & Local Management
+        function downloadBackup() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "pos-data.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function importBackup() {
+            const fileInput = document.getElementById('file-import-json');
+            const file = fileInput.files[0];
+            if(!file) { alert('Please select a valid JSON data file first.'); return; }
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if(data.customers && data.services && data.invoices) {
+                        db = data;
+                        if(!db.bookings) db.bookings = [];
+                        await saveData(true); // Force sync to Firebase
+                        showToast('Database Restored Successfully!');
+                        fileInput.value = '';
+                    } else {
+                        alert('Structure failure: Make sure the JSON file contains customers, services, and invoices arrays.');
+                    }
+                } catch(err) {
+                    alert('Error reading the backup data package.');
+                }
+            }
+            reader.readAsText(file);
+        }
+
+        // Bootstrap on load
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
